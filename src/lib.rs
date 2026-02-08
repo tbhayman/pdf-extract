@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::rc::Rc;
 use std::marker::PhantomData;
+#[allow(hidden_glob_reexports)]
 use std::result::Result;
 use log::{warn, error, debug};
 mod core_fonts;
@@ -312,7 +313,7 @@ struct PdfSimpleFont<'a> {
 #[derive(Clone)]
 struct PdfType3Font<'a> {
     font: &'a Dictionary,
-    doc: &'a Document,
+    _doc: &'a Document,
     encoding: Option<Vec<u16>>,
     unicode_map: Option<HashMap<CharCode, String>>,
     widths: HashMap<CharCode, f64>, // should probably just use i32 here
@@ -511,7 +512,7 @@ impl<'a> PdfSimpleFont<'a> {
                                             // code point, so we'll use an empty string instead. See issue #76
                                             match unicode_map.entry(code as u32) {
                                                 Entry::Vacant(v) => { v.insert("".to_owned()); }
-                                                Entry::Occupied(e) => {
+                                                Entry::Occupied(_e) => {
                                                     panic!("unexpected entry in unicode map")
                                                 }
                                             }
@@ -583,7 +584,7 @@ impl<'a> PdfSimpleFont<'a> {
             }
             assert_eq!(first_char + i - 1, last_char);
         } else {
-            let name = if is_core_font(&base_name) {
+            let _name = if is_core_font(&base_name) {
                 &base_name
             } else {
                 warn!("no widths and not core font {:?}", base_name);
@@ -682,7 +683,7 @@ impl<'a> PdfSimpleFont<'a> {
     }
 
     #[allow(dead_code)]
-    fn get_descriptor(&self) -> Option<PdfFontDescriptor> {
+    fn get_descriptor(&self) -> Option<PdfFontDescriptor<'_>> {
         maybe_get_obj(self.doc, self.font, b"FontDescriptor").and_then(|desc| desc.as_dict().ok()).map(|desc| PdfFontDescriptor{desc: desc, doc: self.doc})
     }
 }
@@ -760,7 +761,7 @@ impl<'a> PdfType3Font<'a> {
             i += 1;
         }
         assert_eq!(first_char + i - 1, last_char);
-        PdfType3Font {doc, font, widths: width_map, encoding: encoding_table, unicode_map}
+        PdfType3Font {_doc: doc, font, widths: width_map, encoding: encoding_table, unicode_map}
     }
 }
 
@@ -792,7 +793,7 @@ trait PdfFont : Debug {
 }
 
 impl<'a> dyn PdfFont + 'a {
-    fn char_codes(&'a self, chars: &'a [u8]) -> PdfFontIter {
+    fn char_codes(&'a self, chars: &'a [u8]) -> PdfFontIter<'a> {
         PdfFontIter{i: chars.iter(), font: self}
     }
     fn decode(&self, chars: &[u8]) -> String {
@@ -1120,11 +1121,11 @@ impl<'a> fmt::Debug for PdfFontDescriptor<'a> {
 struct Type0Func {
     domain: Vec<f64>,
     range: Vec<f64>,
-    contents: Vec<u8>,
-    size: Vec<i64>,
-    bits_per_sample: i64,
-    encode: Vec<f64>,
-    decode: Vec<f64>,
+    _contents: Vec<u8>,
+    _size: Vec<i64>,
+    _bits_per_sample: i64,
+    _encode: Vec<f64>,
+    _decode: Vec<f64>,
 }
 
 #[allow(dead_code)]
@@ -1150,14 +1151,16 @@ impl Type0Func {
 
 #[derive(Clone, Debug)]
 struct Type2Func {
-    c0: Option<Vec<f64>>,
-    c1: Option<Vec<f64>>,
-    n: f64,
+    _c0: Option<Vec<f64>>,
+    _c1: Option<Vec<f64>>,
+    _n: f64,
 }
 
 #[derive(Clone, Debug)]
 enum Function {
+    #[allow(dead_code)]
     Type0(Type0Func),
+    #[allow(dead_code)]
     Type2(Type2Func),
     #[allow(dead_code)]
     Type3,
@@ -1198,14 +1201,14 @@ impl Function {
                 });
                 let decode = get::<Option<Vec<f64>>>(doc, dict, b"Decode").unwrap_or_else(|| range.clone());
 
-                Function::Type0(Type0Func { domain, range, size, contents, bits_per_sample, encode, decode })
+                Function::Type0(Type0Func { domain, range, _size: size, _contents: contents, _bits_per_sample: bits_per_sample, _encode: encode, _decode: decode })
             }
             2 => {
                 // Exponential interpolation function
                 let c0 = get::<Option<Vec<f64>>>(doc, dict, b"C0");
                 let c1 = get::<Option<Vec<f64>>>(doc, dict, b"C1");
                 let n = get::<f64>(doc, dict, b"N");
-                Function::Type2(Type2Func { c0, c1, n})
+                Function::Type2(Type2Func { _c0: c0, _c1: c1, _n: n})
             }
             3 => {
                 // Stitching function
@@ -1394,24 +1397,24 @@ impl Path {
 
 #[derive(Clone, Debug)]
 pub struct CalGray {
-    white_point: [f64; 3],
-    black_point: Option<[f64; 3]>,
-    gamma: Option<f64>,
+    _white_point: [f64; 3],
+    _black_point: Option<[f64; 3]>,
+    _gamma: Option<f64>,
 }
 
 #[derive(Clone, Debug)]
 pub struct CalRGB {
-    white_point: [f64; 3],
-    black_point: Option<[f64; 3]>,
-    gamma: Option<[f64; 3]>,
-    matrix: Option<Vec<f64>>
+    _white_point: [f64; 3],
+    _black_point: Option<[f64; 3]>,
+    _gamma: Option<[f64; 3]>,
+    _matrix: Option<Vec<f64>>
 }
 
 #[derive(Clone, Debug)]
 pub struct Lab {
-    white_point: [f64; 3],
-    black_point: Option<[f64; 3]>,
-    range: Option<[f64; 4]>,
+    _white_point: [f64; 3],
+    _black_point: Option<[f64; 3]>,
+    _range: Option<[f64; 4]>,
 }
 
 #[derive(Clone, Debug)]
@@ -1427,9 +1430,9 @@ pub enum AlternateColorSpace {
 
 #[derive(Clone)]
 pub struct Separation {
-    name: String,
-    alternate_space: AlternateColorSpace,
-    tint_transform: Box<Function>,
+    _name: String,
+    _alternate_space: AlternateColorSpace,
+    _tint_transform: Box<Function>,
 }
 
 #[derive(Clone)]
@@ -1481,26 +1484,26 @@ fn make_colorspace<'a>(doc: &'a Document, name: &[u8], resources: &'a Dictionary
                                     "CalGray" => {
                                         let dict = cs[1].as_dict().expect("second arg must be a dict");
                                         AlternateColorSpace::CalGray(CalGray {
-                                            white_point: get(&doc, dict, b"WhitePoint"),
-                                            black_point: get(&doc, dict, b"BackPoint"),
-                                            gamma: get(&doc, dict, b"Gamma"),
+                                            _white_point: get(&doc, dict, b"WhitePoint"),
+                                            _black_point: get(&doc, dict, b"BackPoint"),
+                                            _gamma: get(&doc, dict, b"Gamma"),
                                         })
                                     }
                                     "CalRGB" => {
                                         let dict = cs[1].as_dict().expect("second arg must be a dict");
                                         AlternateColorSpace::CalRGB(CalRGB {
-                                            white_point: get(&doc, dict, b"WhitePoint"),
-                                            black_point: get(&doc, dict, b"BackPoint"),
-                                            gamma: get(&doc, dict, b"Gamma"),
-                                            matrix: get(&doc, dict, b"Matrix"),
+                                            _white_point: get(&doc, dict, b"WhitePoint"),
+                                            _black_point: get(&doc, dict, b"BackPoint"),
+                                            _gamma: get(&doc, dict, b"Gamma"),
+                                            _matrix: get(&doc, dict, b"Matrix"),
                                         })
                                     }
                                     "Lab" => {
                                         let dict = cs[1].as_dict().expect("second arg must be a dict");
                                         AlternateColorSpace::Lab(Lab {
-                                            white_point: get(&doc, dict, b"WhitePoint"),
-                                            black_point: get(&doc, dict, b"BackPoint"),
-                                            range: get(&doc, dict, b"Range"),
+                                            _white_point: get(&doc, dict, b"WhitePoint"),
+                                            _black_point: get(&doc, dict, b"BackPoint"),
+                                            _range: get(&doc, dict, b"Range"),
                                         })
                                     }
                                     _ => panic!("Unexpected color space name")
@@ -1511,7 +1514,7 @@ fn make_colorspace<'a>(doc: &'a Document, name: &[u8], resources: &'a Dictionary
                         let tint_transform = Box::new(Function::new(doc, maybe_deref(doc, &cs[3])));
 
                         dlog!("{:?} {:?} {:?}", name, alternate_space, tint_transform);
-                        ColorSpace::Separation(Separation{ name, alternate_space, tint_transform})
+                        ColorSpace::Separation(Separation{ _name: name, _alternate_space: alternate_space, _tint_transform: tint_transform})
                     }
                     "ICCBased" => {
                         let stream = maybe_deref(doc, &cs[1]).as_stream().unwrap();
@@ -1522,26 +1525,26 @@ fn make_colorspace<'a>(doc: &'a Document, name: &[u8], resources: &'a Dictionary
                     "CalGray" => {
                         let dict = cs[1].as_dict().expect("second arg must be a dict");
                         ColorSpace::CalGray(CalGray {
-                            white_point: get(&doc, dict, b"WhitePoint"),
-                            black_point: get(&doc, dict, b"BackPoint"),
-                            gamma: get(&doc, dict, b"Gamma"),
+                            _white_point: get(&doc, dict, b"WhitePoint"),
+                            _black_point: get(&doc, dict, b"BackPoint"),
+                            _gamma: get(&doc, dict, b"Gamma"),
                         })
                     }
                     "CalRGB" => {
                         let dict = cs[1].as_dict().expect("second arg must be a dict");
                         ColorSpace::CalRGB(CalRGB {
-                            white_point: get(&doc, dict, b"WhitePoint"),
-                            black_point: get(&doc, dict, b"BackPoint"),
-                            gamma: get(&doc, dict, b"Gamma"),
-                            matrix: get(&doc, dict, b"Matrix"),
+                            _white_point: get(&doc, dict, b"WhitePoint"),
+                            _black_point: get(&doc, dict, b"BackPoint"),
+                            _gamma: get(&doc, dict, b"Gamma"),
+                            _matrix: get(&doc, dict, b"Matrix"),
                         })
                     }
                     "Lab" => {
                         let dict = cs[1].as_dict().expect("second arg must be a dict");
                         ColorSpace::Lab(Lab {
-                            white_point: get(&doc, dict, b"WhitePoint"),
-                            black_point: get(&doc, dict, b"BackPoint"),
-                            range: get(&doc, dict, b"Range"),
+                            _white_point: get(&doc, dict, b"WhitePoint"),
+                            _black_point: get(&doc, dict, b"BackPoint"),
+                            _range: get(&doc, dict, b"Range"),
                         })
                     }
                     "Pattern" => {
@@ -1918,7 +1921,7 @@ fn insert_nbsp(input: &str) -> String {
 }
 
 impl<'a> HTMLOutput<'a> {
-    pub fn new(file: &mut dyn std::io::Write) -> HTMLOutput {
+    pub fn new(file: &mut dyn std::io::Write) -> HTMLOutput<'_> {
         HTMLOutput {
             file,
             flip_ctm: Transform2D::identity(),
@@ -1996,7 +1999,7 @@ pub struct SVGOutput<'a>  {
     file: &'a mut dyn std::io::Write
 }
 impl<'a> SVGOutput<'a> {
-    pub fn new(file: &mut dyn std::io::Write) -> SVGOutput {
+    pub fn new(file: &mut dyn std::io::Write) -> SVGOutput<'_> {
         SVGOutput{file}
     }
 }
