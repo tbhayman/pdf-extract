@@ -389,7 +389,9 @@ impl<'a> PdfSimpleFont<'a> {
                     Some(&Object::Stream(ref s)) => {
                         let s = get_contents(s);
                         //dlog!("font contents {:?}", pdf_to_utf8(&s));
-                        type1_encoding = Some(type1_encoding_parser::get_encoding_map(&s).expect("encoding"));
+                        if let Ok(encoding_map) = type1_encoding_parser::get_encoding_map(&s) {
+                            type1_encoding = Some(encoding_map);
+                        }
                     }
                     _ => { dlog!("font file {:?}", file) }
                 }
@@ -1257,7 +1259,17 @@ struct TextState<'a>
 // XXX: We'd ideally implement this without having to copy the uncompressed data
 fn get_contents(contents: &Stream) -> Vec<u8> {
     if contents.filters().is_ok() {
-        contents.decompressed_content().unwrap_or_else(|_|contents.content.clone())
+        match contents.decompressed_content() {
+            Ok(data) => data,
+            Err(e) => {
+                warn!("Failed to decompress stream content (Type: {:?}, Subtype: {:?}, Filter: {:?}): {}. Using raw content.", 
+                      contents.dict.get(b"Type"), 
+                      contents.dict.get(b"Subtype"),
+                      contents.dict.get(b"Filter"),
+                      e);
+                contents.content.clone()
+            }
+        }
     } else {
         contents.content.clone()
     }
@@ -1580,8 +1592,44 @@ impl<'a> Processor<'a> {
         Processor { _none: PhantomData }
     }
 
+    /// Strip inline images from content stream as lopdf's parser doesn't support BI/ID/EI operators
+    fn strip_inline_images(content: &[u8]) -> Vec<u8> {
+        let mut result = Vec::with_capacity(content.len());
+        let mut i = 0;
+        
+        while i < content.len() {
+            // Look for "\nBI\n" pattern (Begin Inline Image)
+            if i + 3 < content.len() 
+                && content[i] == b'\n' 
+                && content[i+1] == b'B' 
+                && content[i+2] == b'I' 
+                && content[i+3] == b'\n' 
+            {
+                // Found inline image start, skip until we find "\nEI " or "\nEI\n"
+                i += 4; // skip "\nBI\n"
+                
+                while i + 3 < content.len() {
+                    if content[i] == b'\n' && content[i+1] == b'E' && content[i+2] == b'I' 
+                        && (content[i+3] == b' ' || content[i+3] == b'\n' || content[i+3] == b'\r') 
+                    {
+                        i += 4; // skip "\nEI " or "\nEI\n"
+                        break;
+                    }
+                    i += 1;
+                }
+            } else {
+                result.push(content[i]);
+                i += 1;
+            }
+        }
+        
+        result
+    }
+
     fn process_stream(&mut self, doc: &'a Document, content: Vec<u8>, resources: &'a Dictionary, media_box: &MediaBox, output: &mut dyn OutputDev, page_num: u32) -> Result<(), OutputError> {
-        let content = Content::decode(&content).unwrap();
+        // Strip inline images as lopdf's parser doesn't support them
+        let content = Self::strip_inline_images(&content);
+        let content = Content::decode(&content)?;
         let mut font_table = HashMap::new();
         let mut gs: GraphicsState = GraphicsState {
             ts: TextState {
@@ -1868,7 +1916,10 @@ impl<'a> Processor<'a> {
                     let xf: &Stream = get(&doc, xobject, name);
                     let resources = maybe_get_obj(&doc, &xf.dict, b"Resources").and_then(|n| n.as_dict().ok()).unwrap_or(resources);
                     let contents = get_contents(xf);
-                    self.process_stream(&doc, contents, resources, &media_box, output, page_num)?;
+                    if let Err(e) = self.process_stream(&doc, contents, resources, &media_box, output, page_num) {
+                        warn!("Failed to process XObject '{}' on page {}: {}. Skipping this XObject.", 
+                              String::from_utf8_lossy(name), page_num, e);
+                    }
                 }
                 _ => { dlog!("unknown operation {:?}", operation); }
 
@@ -2384,7 +2435,9 @@ pub fn output_doc(doc: &Document, output: &mut dyn OutputDev) -> Result<(), Outp
     for dict in pages {
         let page_num = dict.0;
         let object_id = dict.1;
-        output_doc_inner(page_num, object_id, doc, &mut p, output, &empty_resources)?;
+        if let Err(e) = output_doc_inner(page_num, object_id, doc, &mut p, output, &empty_resources) {
+            warn!("Failed to extract text from page {}: {}. Continuing with next page.", page_num, e);
+        }
     }
     Ok(())
 }
