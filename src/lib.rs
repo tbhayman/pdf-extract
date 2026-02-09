@@ -357,6 +357,7 @@ fn encoding_to_unicode_table(name: &[u8]) -> Vec<u16> {
         b"MacRomanEncoding" => encodings::MAC_ROMAN_ENCODING,
         b"MacExpertEncoding" => encodings::MAC_EXPERT_ENCODING,
         b"WinAnsiEncoding" => encodings::WIN_ANSI_ENCODING,
+        b"StandardEncoding" => encodings::STANDARD_ENCODING,
         _ => panic!("unexpected encoding {:?}", pdf_to_utf8(name))
     };
     let encoding_table = encoding.iter()
